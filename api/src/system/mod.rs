@@ -15,7 +15,7 @@ pub mod project;
 
 pub type System = Arc<InnerSystem>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InnerSystem {
     db: DatabaseConnection,
 }

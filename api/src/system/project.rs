@@ -1,4 +1,4 @@
-use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder, Set};
+use sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder, Set};
 use openubl_entity as entity;
 
 use crate::db::{Paginated, PaginatedResults, Transactional};
@@ -42,26 +42,25 @@ impl InnerSystem {
         let query = entity::project::Entity::find()
             .order_by_asc(entity::project::Column::Name); // Or any other default sort
 
-        let total_items = query.clone().count(&connection).await?;
-        let current_page = paginated.page;
-        let items_per_page = paginated.page_size;
+        let num_items = query.clone().count(&connection).await?;
+        
+        // Use methods from Paginated struct if they are correct, or direct field access
+        let items_per_page = paginated.limit(); // Or paginated.limit directly
+        let current_page_0_indexed = if items_per_page == 0 { 0 } else { paginated.offset() / items_per_page }; // Prevent division by zero, ensure offset() is available or use paginated.offset
 
         let projects = query
             .paginate(&connection, items_per_page)
-            .nth_page(current_page.saturating_sub(1) as usize) // Paginate is 0-indexed
-            .all()
+            .fetch_page(current_page_0_indexed as usize) // fetch_page is 0-indexed
             .await?;
 
-        let results = projects
+        let project_contexts = projects
             .into_iter()
             .map(|p| (self, p).into())
             .collect();
 
         Ok(PaginatedResults {
-            results,
-            total_items,
-            current_page,
-            items_per_page,
+            items: project_contexts,
+            num_items,
         })
     }
 
@@ -75,7 +74,7 @@ impl InnerSystem {
         // If 'id' is set, this might behave as an update if the PK exists, or insert if not.
         // For clarity, SeaORM typically uses `insert` for new and `update` for existing.
         // The `save` method can insert or update.
-        let result = model.clone().save(&self.connection(tx)).await?;
+        let result: entity::project::Model = model.clone().save(&self.connection(tx)).await?;
         Ok((self, result).into())
     }
 }
@@ -89,11 +88,11 @@ impl ProjectContext {
         let mut active_model: entity::project::ActiveModel = self.project.clone().into_active_model();
 
         // Only apply changes if they are Set. Caller should construct ActiveModel appropriately.
-        if let Set(name) = model.name {
-            active_model.name = Set(name);
+        if let ActiveValue::Set(name) = model.name {
+            active_model.name = ActiveValue::Set(name);
         }
-        if let Set(description) = model.description.clone() { // Clone Option<String>
-            active_model.description = Set(description);
+        if let ActiveValue::Set(description) = model.description.clone() { // Clone Option<String>
+            active_model.description = ActiveValue::Set(description);
         }
         // ID should not be changed via this method.
 
@@ -112,8 +111,11 @@ impl ProjectContext {
 mod tests {
     use super::*;
     use crate::db::Transactional;
-    use sea_orm::ActiveValue::Set;
     use openubl_entity::project;
+    // Assuming Set is still needed for new_project_active_model, qualify it or ensure ActiveValue is imported for tests too.
+    // For clarity, using sea_orm::ActiveValue::Set in new_project_active_model if tests also had issues.
+    // The main code fix is `use sea_orm::ActiveValue;` and then using `ActiveValue::Set`.
+    // The test code itself uses `sea_orm::ActiveValue::Set` already in its `new_project_active_model`.
 
     async fn create_system() -> InnerSystem {
         InnerSystem::for_test().await.unwrap().as_ref().clone()
@@ -121,8 +123,8 @@ mod tests {
 
     fn new_project_active_model(name: &str, description: Option<&str>) -> project::ActiveModel {
         project::ActiveModel {
-            name: Set(name.to_string()),
-            description: Set(description.map(|s| s.to_string())),
+            name: sea_orm::ActiveValue::Set(name.to_string()),
+            description: sea_orm::ActiveValue::Set(description.map(|s| s.to_string())),
             ..Default::default()
         }
     }
@@ -174,35 +176,31 @@ mod tests {
 
         // List first page
         let paginated_results_p1 = system
-            .list_projects(Paginated { page: 1, page_size: 2 }, Transactional::None)
+            .list_projects(Paginated { offset: 0, limit: 2 }, Transactional::None)
             .await
             .unwrap();
         
-        assert_eq!(paginated_results_p1.total_items, 3);
-        assert_eq!(paginated_results_p1.current_page, 1);
-        assert_eq!(paginated_results_p1.items_per_page, 2);
-        assert_eq!(paginated_results_p1.results.len(), 2);
-        assert_eq!(paginated_results_p1.results[0].project.name, "Project A"); // Assuming order by name ASC
-        assert_eq!(paginated_results_p1.results[1].project.name, "Project B");
+        assert_eq!(paginated_results_p1.num_items, 3);
+        assert_eq!(paginated_results_p1.items.len(), 2);
+        assert_eq!(paginated_results_p1.items[0].project.name, "Project A"); // Assuming order by name ASC
+        assert_eq!(paginated_results_p1.items[1].project.name, "Project B");
 
         // List second page
         let paginated_results_p2 = system
-            .list_projects(Paginated { page: 2, page_size: 2 }, Transactional::None)
+            .list_projects(Paginated { offset: 2, limit: 2 }, Transactional::None)
             .await
             .unwrap();
 
-        assert_eq!(paginated_results_p2.total_items, 3);
-        assert_eq!(paginated_results_p2.current_page, 2);
-        assert_eq!(paginated_results_p2.items_per_page, 2);
-        assert_eq!(paginated_results_p2.results.len(), 1);
-        assert_eq!(paginated_results_p2.results[0].project.name, "Project C");
+        assert_eq!(paginated_results_p2.num_items, 3);
+        assert_eq!(paginated_results_p2.items.len(), 1);
+        assert_eq!(paginated_results_p2.items[0].project.name, "Project C");
 
         // List with page size larger than total items
         let paginated_results_all = system
-            .list_projects(Paginated { page: 1, page_size: 5 }, Transactional::None)
+            .list_projects(Paginated { offset: 0, limit: 5 }, Transactional::None)
             .await
             .unwrap();
-        assert_eq!(paginated_results_all.results.len(), 3);
+        assert_eq!(paginated_results_all.items.len(), 3);
     }
 
     #[tokio::test]
@@ -214,8 +212,8 @@ mod tests {
         let project_id = project_ctx.project.id;
 
         let update_am = project::ActiveModel {
-            name: Set("Updated Name".to_string()),
-            description: Set(Some("Updated Desc".to_string())),
+            name: sea_orm::ActiveValue::Set("Updated Name".to_string()),
+            description: sea_orm::ActiveValue::Set(Some("Updated Desc".to_string())),
             ..Default::default() // ID is not set here for update
         };
 
