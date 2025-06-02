@@ -11,6 +11,7 @@ use crate::db::{ConnectionOrTransaction, Transactional};
 pub mod credentials;
 pub mod document;
 pub mod error;
+pub mod project;
 
 pub type System = Arc<InnerSystem>;
 

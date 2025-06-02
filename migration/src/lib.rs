@@ -6,6 +6,7 @@ mod m20240113_213657_create_keystore_config;
 mod m20240114_154538_create_credentials;
 mod m20240117_142858_create_send_rule;
 mod m20240717_214515_create_delivery;
+mod m20240725000000_create_project;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -18,6 +19,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240114_154538_create_credentials::Migration),
             Box::new(m20240117_142858_create_send_rule::Migration),
             Box::new(m20240717_214515_create_delivery::Migration),
+            Box::new(m20240725000000_create_project::Migration),
         ]
     }
 }

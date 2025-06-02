@@ -1,4 +1,5 @@
 use openubl_entity as entity;
+use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -18,6 +19,41 @@ impl From<entity::document::Model> for DocumentDto {
             document_id: value.identifier.clone(),
             document_type: value.r#type.clone(),
             voided_document_code: value.voided_document_code.clone(),
+        }
+    }
+}
+
+// Project DTOs
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProjectDto {
+    pub id: i32,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+impl From<entity::project::Model> for ProjectDto {
+    fn from(model: entity::project::Model) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            description: model.description,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NewProjectDto {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+impl From<NewProjectDto> for entity::project::ActiveModel {
+    fn from(dto: NewProjectDto) -> Self {
+        entity::project::ActiveModel {
+            name: Set(dto.name),
+            description: Set(dto.description),
+            ..Default::default()
         }
     }
 }

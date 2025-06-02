@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod project;
 pub mod credentials;
 pub mod delivery;
 pub mod document;

@@ -15,6 +15,9 @@ use crate::server::credentials::{
 };
 use crate::server::document::{get_document_file, list_documents, send_document};
 use crate::server::health;
+use crate::server::project::{
+    create_project, delete_project, get_project, list_projects, update_project,
+};
 
 mod dto;
 pub mod server;
@@ -86,4 +89,11 @@ pub fn configure(config: &mut web::ServiceConfig) {
     config.service(get_credentials);
     config.service(update_credentials);
     config.service(delete_credentials);
+
+    // Projects
+    config.service(list_projects);
+    config.service(create_project);
+    config.service(get_project);
+    config.service(update_project);
+    config.service(delete_project);
 }
