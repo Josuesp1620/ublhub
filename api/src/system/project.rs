@@ -1,4 +1,4 @@
-use sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder, Set};
+use sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder};
 use openubl_entity as entity;
 
 use crate::db::{Paginated, PaginatedResults, Transactional};
@@ -44,9 +44,9 @@ impl InnerSystem {
 
         let num_items = query.clone().count(&connection).await?;
         
-        // Use methods from Paginated struct if they are correct, or direct field access
-        let items_per_page = paginated.limit(); // Or paginated.limit directly
-        let current_page_0_indexed = if items_per_page == 0 { 0 } else { paginated.offset() / items_per_page }; // Prevent division by zero, ensure offset() is available or use paginated.offset
+        // Use direct field access for Paginated struct
+        let items_per_page = paginated.limit;
+        let current_page_0_indexed = if items_per_page == 0 { 0 } else { paginated.offset / items_per_page }; // Prevent division by zero
 
         let projects = query
             .paginate(&connection, items_per_page)
@@ -74,7 +74,9 @@ impl InnerSystem {
         // If 'id' is set, this might behave as an update if the PK exists, or insert if not.
         // For clarity, SeaORM typically uses `insert` for new and `update` for existing.
         // The `save` method can insert or update.
-        let result: entity::project::Model = model.clone().save(&self.connection(tx)).await?;
+        // Reverting to insert() as it's more semantically correct for "persist new"
+        // and to see if it resolves any underlying confusion related to the E0277 error.
+        let result = model.clone().insert(&self.connection(tx)).await?;
         Ok((self, result).into())
     }
 }
@@ -88,11 +90,11 @@ impl ProjectContext {
         let mut active_model: entity::project::ActiveModel = self.project.clone().into_active_model();
 
         // Only apply changes if they are Set. Caller should construct ActiveModel appropriately.
-        if let ActiveValue::Set(name) = model.name {
-            active_model.name = ActiveValue::Set(name);
+        if let ActiveValue::Set(ref name_val) = model.name {
+            active_model.name = ActiveValue::Set(name_val.clone());
         }
-        if let ActiveValue::Set(description) = model.description.clone() { // Clone Option<String>
-            active_model.description = ActiveValue::Set(description);
+        if let ActiveValue::Set(ref description_val) = model.description { 
+            active_model.description = ActiveValue::Set(description_val.clone());
         }
         // ID should not be changed via this method.
 
